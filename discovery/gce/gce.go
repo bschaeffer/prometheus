@@ -116,6 +116,7 @@ type Discovery struct {
 	project      string
 	zone         string
 	filter       string
+	tags         []string
 	client       *http.Client
 	svc          *compute.Service
 	isvc         *compute.InstancesService
@@ -129,6 +130,7 @@ func NewDiscovery(conf SDConfig, logger log.Logger) (*Discovery, error) {
 		project:      conf.Project,
 		zone:         conf.Zone,
 		filter:       conf.Filter,
+		tags:         conf.Tags,
 		port:         conf.Port,
 		tagSeparator: conf.TagSeparator,
 	}
@@ -166,7 +168,9 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			if len(inst.NetworkInterfaces) == 0 {
 				continue
 			}
-			if len(d.tags) > 0 && instHasTags(inst, d.tags)
+			if len(d.tags) > 0 && !instanceHasTags(inst, d.tags) {
+				continue
+			}
 			labels := model.LabelSet{
 				gceLabelProject:        model.LabelValue(d.project),
 				gceLabelZone:           model.LabelValue(inst.Zone),
@@ -230,7 +234,7 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	return []*targetgroup.Group{tg}, nil
 }
 
-func instHasTags(inst *compute.Instance, tags []string) bool {
+func instanceHasTags(inst *compute.Instance, tags []string) bool {
 	hasAllTags := true
 	for _, instTag := range inst.Tags.Items {
 		hasTag := false
