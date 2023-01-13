@@ -76,6 +76,9 @@ type SDConfig struct {
 	// https://cloud.google.com/compute/docs/reference/latest/instances/list
 	Filter string `yaml:"filter,omitempty"`
 
+	// Tags: Can be used optionally to filter instances by their network tags.
+	Tags []string `yaml:"tags,omitempty"`
+
 	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
 	Port            int            `yaml:"port"`
 	TagSeparator    string         `yaml:"tag_separator,omitempty"`
@@ -113,6 +116,7 @@ type Discovery struct {
 	project      string
 	zone         string
 	filter       string
+	tags         []string
 	client       *http.Client
 	svc          *compute.Service
 	isvc         *compute.InstancesService
@@ -126,6 +130,7 @@ func NewDiscovery(conf SDConfig, logger log.Logger) (*Discovery, error) {
 		project:      conf.Project,
 		zone:         conf.Zone,
 		filter:       conf.Filter,
+		tags:         conf.Tags,
 		port:         conf.Port,
 		tagSeparator: conf.TagSeparator,
 	}
@@ -161,6 +166,9 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 	err := ilc.Pages(ctx, func(l *compute.InstanceList) error {
 		for _, inst := range l.Items {
 			if len(inst.NetworkInterfaces) == 0 {
+				continue
+			}
+			if !instanceHasTags(inst, d.tags) {
 				continue
 			}
 			labels := model.LabelSet{
@@ -224,4 +232,23 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		return nil, fmt.Errorf("error retrieving refresh targets from gce: %w", err)
 	}
 	return []*targetgroup.Group{tg}, nil
+}
+
+func instanceHasTags(inst *compute.Instance, tags []string) bool {
+	if len(tags) <= 0 {
+		return true // No tags to filter on, include this instance
+	} else if inst.Tags == nil || len(inst.Tags.Items) <= 0 {
+		return false // No instance tags to compare against, can't have tags
+	}
+
+	instanceTags := make(map[string]bool)
+	for _, tag := range inst.Tags.Items {
+		instanceTags[tag] = true
+	}
+	for _, tag := range tags {
+		if _, ok := instanceTags[tag]; !ok {
+			return false
+		}
+	}
+	return true
 }
