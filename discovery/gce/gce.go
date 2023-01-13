@@ -75,6 +75,9 @@ type SDConfig struct {
 	// Syntax of this filter string is described here in the filter query parameter section:
 	// https://cloud.google.com/compute/docs/reference/latest/instances/list
 	Filter string `yaml:"filter,omitempty"`
+	
+	// Tags: Can be used optionally to filter only instances with the specified tags.
+	Tags []string `yaml:"tags,omitempty"`
 
 	RefreshInterval model.Duration `yaml:"refresh_interval,omitempty"`
 	Port            int            `yaml:"port"`
@@ -163,6 +166,7 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 			if len(inst.NetworkInterfaces) == 0 {
 				continue
 			}
+			if len(d.tags) > 0 && instHasTags(inst, d.tags)
 			labels := model.LabelSet{
 				gceLabelProject:        model.LabelValue(d.project),
 				gceLabelZone:           model.LabelValue(inst.Zone),
@@ -224,4 +228,22 @@ func (d *Discovery) refresh(ctx context.Context) ([]*targetgroup.Group, error) {
 		return nil, fmt.Errorf("error retrieving refresh targets from gce: %w", err)
 	}
 	return []*targetgroup.Group{tg}, nil
+}
+
+func instHasTags(inst *compute.Instance, tags []string) bool {
+	hasAllTags := true
+	for _, instTag := range inst.Tags.Items {
+		hasTag := false
+		for _, tag := range tags {
+			if instTag == tag {
+				hasTag = true
+				break
+			}
+		}
+		if !hasTag {
+			hasAllTags = false
+			break
+		}
+	}
+	return hasAllTags
 }
